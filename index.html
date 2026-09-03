@@ -1,0 +1,3500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2563eb">
+
+  <title>天工书院面试室预约</title>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Excel 导出 -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Microsoft YaHei",
+        "PingFang SC",
+        Arial,
+        sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    /* ==================== 顶部 ==================== */
+
+    .header {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      color: white;
+      padding: 28px 20px;
+      text-align: center;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, .12);
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 30px;
+      letter-spacing: 1px;
+    }
+
+    .header p {
+      margin: 9px 0 0;
+      opacity: .92;
+      font-size: 14px;
+    }
+
+    /* ==================== 页面主体 ==================== */
+
+    .container {
+      width: min(1400px, calc(100% - 24px));
+      margin: 22px auto 50px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+      box-shadow: 0 3px 14px rgba(15, 23, 42, .06);
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    /* ==================== 输入区域 ==================== */
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toolbar label {
+      font-weight: 600;
+    }
+
+    input,
+    select {
+      border: 1px solid #d1d5db;
+      border-radius: 9px;
+      padding: 10px 12px;
+      outline: none;
+      background: white;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+
+    /* ==================== 图例 ==================== */
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 15px;
+      font-size: 14px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      border: 1px solid rgba(0, 0, 0, .08);
+    }
+
+    .green {
+      background: #dcfce7;
+    }
+
+    .yellow {
+      background: #fef08a;
+    }
+
+    .gray {
+      background: #e5e7eb;
+    }
+
+    /* ==================== 表格 ==================== */
+
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+    }
+
+    .booking-grid {
+      display: grid;
+      grid-template-columns: 92px repeat(14, minmax(86px, 1fr));
+      min-width: 1300px;
+    }
+
+    .grid-head,
+    .room-name,
+    .slot-cell {
+      border-right: 1px solid #e5e7eb;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .grid-head {
+      background: #f8fafc;
+      padding: 12px 5px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 13px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .room-name {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 68px;
+      background: #f8fafc;
+      font-weight: 700;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+    }
+
+    .slot-cell {
+      min-height: 68px;
+      padding: 6px;
+      background: white;
+    }
+
+    .slot-btn {
+      width: 100%;
+      height: 100%;
+      min-height: 55px;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      transition: .15s;
+    }
+
+    /* 可预约 */
+
+    .slot-btn.available {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .slot-btn.available:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(22, 101, 52, .16);
+    }
+
+    /* 已选择 */
+
+    .slot-btn.selected {
+      background: #fef08a;
+      color: #854d0e;
+      box-shadow: inset 0 0 0 2px #eab308;
+    }
+
+    /* 已预约 / 已结束 */
+
+    .slot-btn.booked,
+    .slot-btn.past {
+      background: #e5e7eb;
+      color: #6b7280;
+      cursor: not-allowed;
+    }
+
+    /* ==================== 已选择 ==================== */
+
+    .selection-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin: 10px 0 15px;
+    }
+
+    .selection-item {
+      background: #fffbeb;
+      border: 1px solid #facc15;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    .selection-item button {
+      border: 0;
+      background: transparent;
+      color: #b45309;
+      cursor: pointer;
+      margin-left: 5px;
+      font-weight: 700;
+    }
+
+    /* ==================== 按钮 ==================== */
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 9px;
+      padding: 11px 17px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .btn-danger {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .btn-success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* ==================== 消息 ==================== */
+
+    .message {
+      display: none;
+      padding: 11px 13px;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .message.show {
+      display: block;
+    }
+
+    .message.success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .message.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .message.info {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    /* ==================== 我的预约 / 管理员表格 ==================== */
+
+    .my-booking-table,
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 620px;
+    }
+
+    .my-booking-table th,
+    .my-booking-table td,
+    .admin-table th,
+    .admin-table td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 11px 9px;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .my-booking-table th,
+    .admin-table th {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+
+    /* ==================== 取消按钮 ==================== */
+
+    .cancel-btn {
+      border: 0;
+      border-radius: 7px;
+      padding: 7px 10px;
+      background: #fee2e2;
+      color: #b91c1c;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .cancel-btn:disabled {
+      background: #e5e7eb;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    /* ==================== 管理员 ==================== */
+
+    .admin-login-box {
+      max-width: 520px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 13px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+
+    .form-group label {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .admin-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    /* ==================== 弹窗 ==================== */
+
+    .modal-mask {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .55);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 15px;
+    }
+
+    .modal-mask.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(520px, 100%);
+      background: white;
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: 0 15px 50px rgba(0, 0, 0, .25);
+    }
+
+    .modal h2 {
+      margin: 0 0 17px;
+      font-size: 22px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+
+    /* ==================== 文字 ==================== */
+
+    .empty {
+      color: #6b7280;
+      padding: 14px 0;
+      font-size: 14px;
+    }
+
+    .small-note {
+      color: #6b7280;
+      font-size: 13px;
+      line-height: 1.7;
+      margin-top: 8px;
+    }
+
+    /* ==================== 手机端 ==================== */
+
+    @media (max-width: 700px) {
+
+      .header {
+        padding: 22px 14px;
+      }
+
+      .header h1 {
+        font-size: 23px;
+      }
+
+      .container {
+        width: calc(100% - 14px);
+        margin-top: 12px;
+      }
+
+      .card {
+        padding: 15px;
+        border-radius: 12px;
+      }
+
+      .card-title {
+        font-size: 18px;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .form-group.full {
+        grid-column: auto;
+      }
+
+      .toolbar {
+        align-items: stretch;
+      }
+
+      .toolbar input {
+        width: 100%;
+      }
+
+      .btn {
+        padding: 10px 14px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ==================== 网站标题 ==================== -->
+
+  <header class="header">
+    <h1>天工书院面试室预约</h1>
+    <p>请选择日期、房间和时间段进行预约</p>
+  </header>
+
+  <main class="container">
+
+    <!-- ==================== ① 日期 ==================== -->
+
+    <section class="card">
+
+      <div class="card-title">
+        ① 选择预约日期
+      </div>
+
+      <div class="toolbar">
+
+        <label for="bookingDate">
+          预约日期：
+        </label>
+
+        <input
+          type="date"
+          id="bookingDate"
+        >
+
+        <button
+          class="btn btn-secondary"
+          id="refreshBtn"
+        >
+          刷新预约状态
+        </button>
+
+      </div>
+
+      <div class="legend">
+
+        <div class="legend-item">
+          <span class="dot green"></span>
+          可预约
+        </div>
+
+        <div class="legend-item">
+          <span class="dot yellow"></span>
+          已选择
+        </div>
+
+        <div class="legend-item">
+          <span class="dot gray"></span>
+          已预约 / 已结束
+        </div>
+
+      </div>
+
+      <div
+        id="availabilityMessage"
+        class="message"
+      ></div>
+
+    </section>
+
+
+    <!-- ==================== ② 房间时间 ==================== -->
+
+    <section class="card">
+
+      <div class="card-title">
+        ② 选择面试室和时间段
+      </div>
+
+      <div class="table-wrap">
+
+        <div
+          id="bookingGrid"
+          class="booking-grid"
+        ></div>
+
+      </div>
+
+      <div class="small-note">
+        可连续点击多个绿色时段进行多选。
+        同一天可以预约不同房间、不同时间段。
+      </div>
+
+    </section>
+
+
+    <!-- ==================== ③ 已选择 ==================== -->
+
+    <section class="card">
+
+      <div class="card-title">
+        ③ 已选择的预约
+        <span id="selectionCount">（0）</span>
+      </div>
+
+      <div
+        id="selectionList"
+        class="selection-list"
+      >
+        <div class="empty">
+          还没有选择预约时段。
+        </div>
+      </div>
+
+      <div class="actions">
+
+        <button
+          class="btn btn-primary"
+          id="confirmBtn"
+          disabled
+        >
+          确认预约
+        </button>
+
+        <button
+          class="btn btn-secondary"
+          id="clearBtn"
+          disabled
+        >
+          清空选择
+        </button>
+
+      </div>
+
+      <div
+        id="bookingMessage"
+        class="message"
+      ></div>
+
+    </section>
+
+
+    <!-- ==================== ④ 我的预约 ==================== -->
+
+    <section class="card">
+
+      <div class="card-title">
+        ④ 查询 / 取消我的预约
+      </div>
+
+      <div class="toolbar">
+
+        <label for="queryPhone">
+          手机号：
+        </label>
+
+        <input
+          type="tel"
+          id="queryPhone"
+          maxlength="11"
+          inputmode="numeric"
+          placeholder="请输入11位手机号"
+        >
+
+        <button
+          class="btn btn-primary"
+          id="queryBtn"
+        >
+          查询我的预约
+        </button>
+
+      </div>
+
+      <div class="small-note">
+        预约成功后，可使用预约时填写的手机号查询。
+        每笔预约从成功创建开始计算，
+        <strong>30分钟内可以取消</strong>。
+      </div>
+
+      <div
+        id="myBookingsBox"
+        style="margin-top:15px;"
+      ></div>
+
+    </section>
+
+
+    <!-- ==================== 管理员 ==================== -->
+
+    <section class="card">
+
+      <div class="card-title">
+        管理员入口
+      </div>
+
+
+      <!-- 管理员登录 -->
+
+      <div
+        id="adminLoginPanel"
+        class="admin-login-box"
+      >
+
+        <div class="form-grid">
+
+          <div class="form-group full">
+
+            <label for="adminEmail">
+              管理员邮箱
+            </label>
+
+            <input
+              type="email"
+              id="adminEmail"
+              placeholder="请输入管理员邮箱"
+            >
+
+          </div>
+
+
+          <div class="form-group full">
+
+            <label for="adminPassword">
+              管理员密码
+            </label>
+
+            <input
+              type="password"
+              id="adminPassword"
+              placeholder="请输入管理员密码"
+            >
+
+          </div>
+
+        </div>
+
+
+        <div
+          class="actions"
+          style="margin-top:15px;"
+        >
+
+          <button
+            class="btn btn-primary"
+            id="adminLoginBtn"
+          >
+            管理员登录
+          </button>
+
+        </div>
+
+
+        <div
+          id="adminMessage"
+          class="message"
+        ></div>
+
+
+        <div class="small-note">
+          管理员账号由 Supabase Authentication 管理。
+          只有被数据库权限允许的管理员账号才能查看全部预约。
+        </div>
+
+      </div>
+
+
+      <!-- 管理员后台 -->
+
+      <div
+        id="adminPanel"
+        style="display:none;"
+      >
+
+        <div class="admin-header">
+
+          <div>
+            <span class="status-badge">
+              管理员已登录
+            </span>
+          </div>
+
+
+          <div class="actions">
+
+            <button
+              class="btn btn-success"
+              id="exportBtn"
+            >
+              导出 Excel
+            </button>
+
+            <button
+              class="btn btn-secondary"
+              id="adminRefreshBtn"
+            >
+              刷新
+            </button>
+
+            <button
+              class="btn btn-danger"
+              id="adminLogoutBtn"
+            >
+              退出登录
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <!-- 管理员筛选 -->
+
+        <div class="admin-filters">
+
+          <input
+            type="date"
+            id="adminDateFilter"
+          >
+
+          <select id="adminRoomFilter">
+
+            <option value="">
+              全部房间
+            </option>
+
+            <option value="B515">
+              B515
+            </option>
+
+            <option value="B516">
+              B516
+            </option>
+
+            <option value="B517">
+              B517
+            </option>
+
+            <option value="B518">
+              B518
+            </option>
+
+            <option value="B519">
+              B519
+            </option>
+
+            <option value="B520">
+              B520
+            </option>
+
+          </select>
+
+
+          <button
+            class="btn btn-secondary"
+            id="clearAdminFilterBtn"
+          >
+            清除筛选
+          </button>
+
+        </div>
+
+
+        <!-- 管理员预约表 -->
+
+        <div class="table-wrap">
+
+          <table class="admin-table">
+
+            <thead>
+
+              <tr>
+
+                <th>
+                  日期
+                </th>
+
+                <th>
+                  房间
+                </th>
+
+                <th>
+                  时间段
+                </th>
+
+                <th>
+                  姓名
+                </th>
+
+                <th>
+                  手机号
+                </th>
+
+                <th>
+                  预约时间
+                </th>
+
+                <th>
+                  操作
+                </th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="adminTableBody"></tbody>
+
+          </table>
+
+        </div>
+
+
+        <div
+          id="adminDataMessage"
+          class="message"
+        ></div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- ==================== 预约确认弹窗 ==================== -->
+
+  <div
+    id="bookingModal"
+    class="modal-mask"
+  >
+
+    <div class="modal">
+
+      <h2>
+        填写预约信息
+      </h2>
+
+
+      <div
+        class="small-note"
+        style="margin-bottom:15px;"
+      >
+
+        预约日期：
+        <strong id="modalDate"></strong>
+
+        <br>
+
+        你已选择
+        <strong id="modalCount"></strong>
+        个时段。
+
+      </div>
+
+
+      <div class="form-grid">
+
+
+        <div class="form-group full">
+
+          <label for="userName">
+            姓名
+          </label>
+
+          <input
+            id="userName"
+            maxlength="30"
+            placeholder="请输入姓名"
+          >
+
+        </div>
+
+
+        <div class="form-group full">
+
+          <label for="userPhone">
+            手机号
+          </label>
+
+          <input
+            id="userPhone"
+            type="tel"
+            maxlength="11"
+            inputmode="numeric"
+            placeholder="请输入11位中国大陆手机号码"
+          >
+
+        </div>
+
+
+      </div>
+
+
+      <div
+        id="modalMessage"
+        class="message"
+      ></div>
+
+
+      <div class="modal-actions">
+
+        <button
+          class="btn btn-secondary"
+          id="closeModalBtn"
+        >
+          返回修改
+        </button>
+
+        <button
+          class="btn btn-primary"
+          id="submitBookingBtn"
+        >
+          提交预约
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ==================== JavaScript ==================== -->
+
+  <script>
+
+    /*
+     * ==========================================================
+     * 1. Supabase 配置
+     * ==========================================================
+     *
+     * 你的项目 URL 已经填写好了。
+     *
+     * 你只需要修改：
+     *
+     * SUPABASE_PUBLISHABLE_KEY
+     *
+     * 注意：
+     * 这里必须填写 Publishable key。
+     *
+     * 不要填写：
+     * Secret key
+     * service_role key
+     *
+     * 不要把 Secret key 放到网页代码里面。
+     */
+
+
+    const SUPABASE_URL =
+      "https://zrmpnazfblezlqgzifbm.supabase.co";
+
+
+    const SUPABASE_PUBLISHABLE_KEY =
+      "sb_publishable_dvn9KqG4E1pcH8WVd2rJSg_iAfFDLSQ";
+
+
+    const db =
+      window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY
+      );
+
+
+    /*
+     * ==========================================================
+     * 房间
+     * ==========================================================
+     */
+
+    const rooms = [
+      "B515",
+      "B516",
+      "B517",
+      "B518",
+      "B519",
+      "B520"
+    ];
+
+
+    /*
+     * ==========================================================
+     * 时间段
+     * ==========================================================
+     */
+
+    const slots = [
+
+      "08:00-09:00",
+
+      "09:00-10:00",
+
+      "10:00-11:00",
+
+      "11:00-12:00",
+
+      "12:00-13:00",
+
+      "13:00-14:00",
+
+      "14:00-15:00",
+
+      "15:00-16:00",
+
+      "16:00-17:00",
+
+      "17:00-18:00",
+
+      "18:00-19:00",
+
+      "19:00-20:00",
+
+      "20:00-21:00",
+
+      "21:00-22:00"
+
+    ];
+
+
+    /*
+     * ==========================================================
+     * 页面运行状态
+     * ==========================================================
+     */
+
+    let selected = new Set();
+
+    let booked = new Set();
+
+    let currentLookupPhone = "";
+
+    let adminBookings = [];
+
+    let countdownTimer = null;
+
+
+    /*
+     * 简化获取元素
+     */
+
+    const $ = id =>
+      document.getElementById(id);
+
+
+    /*
+     * 房间 + 时间段的唯一标识
+     */
+
+    function key(room, slot) {
+
+      return room + "|" + slot;
+
+    }
+
+
+    /*
+     * 获取今天日期
+     *
+     * 返回：
+     * 2026-09-03
+     */
+
+    function localToday() {
+
+      const d = new Date();
+
+      const offset =
+        d.getTimezoneOffset();
+
+      const local =
+        new Date(
+          d.getTime() -
+          offset * 60000
+        );
+
+      return local
+        .toISOString()
+        .slice(0, 10);
+
+    }
+
+
+    /*
+     * 防止管理员数据中的特殊字符破坏页面
+     */
+
+    function escapeHtml(value) {
+
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    }
+
+
+    /*
+     * 手机号验证
+     *
+     * 中国大陆常见11位手机号码格式
+     */
+
+    function validPhone(phone) {
+
+      return /^1[3-9][0-9]{9}$/.test(phone);
+
+    }
+
+
+    /*
+     * 显示提示信息
+     */
+
+    function showMessage(
+      element,
+      text,
+      type = "info"
+    ) {
+
+      element.textContent = text;
+
+      element.className =
+        "message show " + type;
+
+    }
+
+
+    /*
+     * 隐藏提示
+     */
+
+    function hideMessage(element) {
+
+      element.className =
+        "message";
+
+      element.textContent = "";
+
+    }
+
+
+    /*
+     * 判断今天已经过去的时间段
+     *
+     * 例如现在 15:30：
+     *
+     * 08-09
+     * 09-10
+     * ...
+     * 14-15
+     *
+     * 不允许再预约。
+     */
+
+    function slotIsPast(slot) {
+
+      const date =
+        $("bookingDate").value;
+
+      if (date !== localToday()) {
+        return false;
+      }
+
+
+      const start =
+        slot.split("-")[0];
+
+
+      const [h, m] =
+        start
+          .split(":")
+          .map(Number);
+
+
+      const now =
+        new Date();
+
+
+      const currentMinutes =
+        now.getHours() * 60 +
+        now.getMinutes();
+
+
+      return (
+        h * 60 + m <=
+        currentMinutes
+      );
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 绘制预约表
+     * ==========================================================
+     */
+
+    function renderGrid() {
+
+      const grid =
+        $("bookingGrid");
+
+
+      let html =
+        '<div class="grid-head">房间 / 时间</div>';
+
+
+      /*
+       * 顶部时间
+       */
+
+      for (const slot of slots) {
+
+        html +=
+          `<div class="grid-head">
+            ${slot}
+          </div>`;
+
+      }
+
+
+      /*
+       * 房间
+       */
+
+      for (const room of rooms) {
+
+        html +=
+          `<div class="room-name">
+            ${room}
+          </div>`;
+
+
+        /*
+         * 每个时间段
+         */
+
+        for (const slot of slots) {
+
+          const k =
+            key(room, slot);
+
+
+          const isBooked =
+            booked.has(k);
+
+
+          const isSelected =
+            selected.has(k);
+
+
+          const isPast =
+            slotIsPast(slot);
+
+
+          let cls =
+            "available";
+
+
+          let text =
+            "可预约";
+
+
+          let disabled =
+            "";
+
+
+          /*
+           * 已预约
+           */
+
+          if (isBooked) {
+
+            cls = "booked";
+
+            text = "已预约";
+
+            disabled = "disabled";
+
+          }
+
+
+          /*
+           * 已经过时间
+           */
+
+          else if (isPast) {
+
+            cls = "past";
+
+            text = "已结束";
+
+            disabled = "disabled";
+
+          }
+
+
+          /*
+           * 用户选择
+           */
+
+          else if (isSelected) {
+
+            cls = "selected";
+
+            text = "已选择";
+
+          }
+
+
+          html += `
+            <div class="slot-cell">
+
+              <button
+                class="slot-btn ${cls}"
+                ${disabled}
+                onclick="toggleSlot('${room}', '${slot}')"
+              >
+                ${text}
+              </button>
+
+            </div>
+          `;
+
+        }
+
+      }
+
+
+      grid.innerHTML =
+        html;
+
+
+      updateSelectionUI();
+
+    }
+
+
+    /*
+     * 点击预约格子
+     */
+
+    window.toggleSlot =
+      function(room, slot) {
+
+        const k =
+          key(room, slot);
+
+
+        /*
+         * 已预约不能点
+         */
+
+        if (
+          booked.has(k) ||
+          slotIsPast(slot)
+        ) {
+
+          return;
+
+        }
+
+
+        /*
+         * 已选中 → 取消选择
+         */
+
+        if (selected.has(k)) {
+
+          selected.delete(k);
+
+        }
+
+        /*
+         * 没选中 → 加入选择
+         */
+
+        else {
+
+          selected.add(k);
+
+        }
+
+
+        renderGrid();
+
+      };
+
+
+    /*
+     * ==========================================================
+     * 更新已选择列表
+     * ==========================================================
+     */
+
+    function updateSelectionUI() {
+
+      const list =
+        $("selectionList");
+
+
+      const arr =
+        Array.from(selected);
+
+
+      $("selectionCount").textContent =
+        `（${arr.length}）`;
+
+
+      $("confirmBtn").disabled =
+        arr.length === 0;
+
+
+      $("clearBtn").disabled =
+        arr.length === 0;
+
+
+      if (arr.length === 0) {
+
+        list.innerHTML =
+          '<div class="empty">还没有选择预约时段。</div>';
+
+        return;
+
+      }
+
+
+      const items =
+        arr.map(k => {
+
+          const [room, slot] =
+            k.split("|");
+
+          return {
+            room,
+            slot
+          };
+
+        });
+
+
+      /*
+       * 按房间、时间排序
+       */
+
+      items.sort((a, b) => {
+
+        const r =
+          rooms.indexOf(a.room) -
+          rooms.indexOf(b.room);
+
+
+        if (r !== 0) {
+          return r;
+        }
+
+
+        return (
+          slots.indexOf(a.slot) -
+          slots.indexOf(b.slot)
+        );
+
+      });
+
+
+      list.innerHTML =
+        items.map(item => `
+
+          <div class="selection-item">
+
+            ${item.room}
+            ·
+            ${item.slot}
+
+            <button
+              onclick="removeSelected('${item.room}', '${item.slot}')"
+            >
+              ×
+            </button>
+
+          </div>
+
+        `).join("");
+
+    }
+
+
+    /*
+     * 删除一个已经选择的时间段
+     */
+
+    window.removeSelected =
+      function(room, slot) {
+
+        selected.delete(
+          key(room, slot)
+        );
+
+        renderGrid();
+
+      };
+
+
+    /*
+     * ==========================================================
+     * 从数据库读取某一天已经预约的时间
+     * ==========================================================
+     */
+
+    async function loadAvailability(
+      showInfo = false
+    ) {
+
+      const date =
+        $("bookingDate").value;
+
+
+      if (!date) {
+        return;
+      }
+
+
+      const {
+        data,
+        error
+      } = await db.rpc(
+        "get_booked_slots",
+        {
+          p_date: date
+        }
+      );
+
+
+      if (error) {
+
+        console.error(error);
+
+        showMessage(
+          $("availabilityMessage"),
+
+          "读取预约状态失败，请检查 Supabase 配置和数据库函数。",
+
+          "error"
+        );
+
+        return;
+
+      }
+
+
+      booked =
+        new Set(
+          (data || []).map(row =>
+            key(
+              row.room,
+              row.time_slot
+            )
+          )
+        );
+
+
+      /*
+       * 如果用户正在选择，
+       * 此时别人已经抢走了其中某个时间，
+       * 自动取消该选择。
+       */
+
+      for (
+        const k of Array.from(selected)
+      ) {
+
+        if (booked.has(k)) {
+
+          selected.delete(k);
+
+        }
+
+      }
+
+
+      renderGrid();
+
+
+      if (showInfo) {
+
+        showMessage(
+          $("availabilityMessage"),
+
+          "预约状态已刷新。",
+
+          "success"
+        );
+
+
+        setTimeout(() => {
+
+          hideMessage(
+            $("availabilityMessage")
+          );
+
+        }, 1800);
+
+      }
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 打开预约填写窗口
+     * ==========================================================
+     */
+
+    function openBookingModal() {
+
+      if (selected.size === 0) {
+        return;
+      }
+
+
+      $("modalDate").textContent =
+        $("bookingDate").value;
+
+
+      $("modalCount").textContent =
+        selected.size;
+
+
+      $("userName").value =
+        "";
+
+
+      $("userPhone").value =
+        "";
+
+
+      hideMessage(
+        $("modalMessage")
+      );
+
+
+      $("bookingModal")
+        .classList
+        .add("show");
+
+    }
+
+
+    /*
+     * 关闭预约窗口
+     */
+
+    function closeBookingModal() {
+
+      $("bookingModal")
+        .classList
+        .remove("show");
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 提交预约
+     * ==========================================================
+     */
+
+    async function submitBooking() {
+
+      const name =
+        $("userName")
+          .value
+          .trim();
+
+
+      const phone =
+        $("userPhone")
+          .value
+          .trim();
+
+
+      const date =
+        $("bookingDate").value;
+
+
+      /*
+       * 姓名
+       */
+
+      if (!name) {
+
+        showMessage(
+          $("modalMessage"),
+          "请输入姓名。",
+          "error"
+        );
+
+        return;
+
+      }
+
+
+      /*
+       * 手机号
+       */
+
+      if (!validPhone(phone)) {
+
+        showMessage(
+          $("modalMessage"),
+
+          "手机号格式不正确，请输入11位中国大陆手机号码。",
+
+          "error"
+        );
+
+        return;
+
+      }
+
+
+      /*
+       * 没有选择
+       */
+
+      if (selected.size === 0) {
+
+        showMessage(
+          $("modalMessage"),
+          "没有可提交的预约时段。",
+          "error"
+        );
+
+        return;
+
+      }
+
+
+      $("submitBookingBtn").disabled =
+        true;
+
+
+      $("submitBookingBtn").textContent =
+        "正在提交...";
+
+
+      try {
+
+        /*
+         * ======================================================
+         * 最终提交前，再次查询数据库
+         *
+         * 防止：
+         *
+         * A用户正在填写姓名
+         *
+         * B用户先一步预约
+         *
+         * A用户最后提交时仍然显示绿色
+         *
+         * 这里再次检查。
+         * ======================================================
+         */
+
+        const {
+          data: latest,
+          error: latestError
+        } = await db.rpc(
+          "get_booked_slots",
+          {
+            p_date: date
+          }
+        );
+
+
+        if (latestError) {
+          throw latestError;
+        }
+
+
+        const latestBooked =
+          new Set(
+            (latest || []).map(row =>
+              key(
+                row.room,
+                row.time_slot
+              )
+            )
+          );
+
+
+        /*
+         * 找出冲突时间
+         */
+
+        const conflicts =
+          Array.from(selected)
+            .filter(k =>
+              latestBooked.has(k)
+            );
+
+
+        /*
+         * 有人抢先了
+         */
+
+        if (conflicts.length > 0) {
+
+          conflicts.forEach(k =>
+            selected.delete(k)
+          );
+
+
+          booked =
+            latestBooked;
+
+
+          renderGrid();
+
+
+          showMessage(
+            $("modalMessage"),
+
+            "其中有时段刚刚被其他人预约了，请重新选择后再提交。",
+
+            "error"
+          );
+
+
+          return;
+
+        }
+
+
+        /*
+         * 组织数据库数据
+         */
+
+        const rows =
+          Array.from(selected)
+            .map(k => {
+
+              const [
+                room,
+                time_slot
+              ] = k.split("|");
+
+
+              return {
+
+                name,
+
+                phone,
+
+                room,
+
+                booking_date:
+                  date,
+
+                time_slot
+
+              };
+
+            });
+
+
+        /*
+         * 一次性批量写入数据库
+         */
+
+        const {
+          error
+        } = await db
+          .from("bookings")
+          .insert(rows);
+
+
+        /*
+         * 数据库报错
+         */
+
+        if (error) {
+
+          console.error(error);
+
+
+          /*
+           * 23505 = 唯一约束冲突
+           */
+
+          if (
+            error.code === "23505"
+          ) {
+
+            showMessage(
+              $("modalMessage"),
+
+              "提交失败：有时段已被其他人抢先预约，请刷新后重新选择。",
+
+              "error"
+            );
+
+          }
+
+          else {
+
+            showMessage(
+              $("modalMessage"),
+
+              "预约失败：" +
+              (
+                error.message ||
+                "未知错误"
+              ),
+
+              "error"
+            );
+
+          }
+
+
+          await loadAvailability(false);
+
+          return;
+
+        }
+
+
+        /*
+         * 保存手机号
+         * 方便马上查询自己的预约
+         */
+
+        currentLookupPhone =
+          phone;
+
+
+        /*
+         * 清空选择
+         */
+
+        selected.clear();
+
+
+        /*
+         * 关闭窗口
+         */
+
+        closeBookingModal();
+
+
+        /*
+         * 刷新预约表
+         */
+
+        await loadAvailability(false);
+
+
+        /*
+         * 成功提示
+         */
+
+        showMessage(
+
+          $("bookingMessage"),
+
+          `预约成功！共预约 ${rows.length} 个时段。
+          请记住手机号，可在30分钟内查询并取消自己的预约。`,
+
+          "success"
+
+        );
+
+
+        setTimeout(() => {
+
+          hideMessage(
+            $("bookingMessage")
+          );
+
+        }, 8000);
+
+
+        /*
+         * 自动查询刚刚的预约
+         */
+
+        await queryMyBookings(true);
+
+
+      }
+
+      catch (err) {
+
+        console.error(err);
+
+
+        showMessage(
+
+          $("modalMessage"),
+
+          "预约失败，请检查网络或 Supabase 配置。",
+
+          "error"
+
+        );
+
+      }
+
+      finally {
+
+        $("submitBookingBtn")
+          .disabled = false;
+
+
+        $("submitBookingBtn")
+          .textContent = "提交预约";
+
+      }
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 查询自己的预约
+     * ==========================================================
+     */
+
+    async function queryMyBookings(
+      silent = false
+    ) {
+
+      const phone =
+        silent
+          ? currentLookupPhone
+          : $("queryPhone")
+              .value
+              .trim();
+
+
+      /*
+       * 手机号格式错误
+       */
+
+      if (!validPhone(phone)) {
+
+        if (!silent) {
+
+          showMessage(
+
+            $("bookingMessage"),
+
+            "请输入正确的11位手机号。",
+
+            "error"
+
+          );
+
+        }
+
+        return;
+
+      }
+
+
+      currentLookupPhone =
+        phone;
+
+
+      const {
+        data,
+        error
+      } = await db.rpc(
+        "get_my_bookings",
+        {
+          p_phone: phone
+        }
+      );
+
+
+      if (error) {
+
+        console.error(error);
+
+
+        $("myBookingsBox").innerHTML =
+          `
+            <div class="empty">
+              查询失败，请检查数据库函数是否创建成功。
+            </div>
+          `;
+
+        return;
+
+      }
+
+
+      renderMyBookings(
+        data || []
+      );
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 显示我的预约
+     * ==========================================================
+     */
+
+    function renderMyBookings(data) {
+
+      if (!data.length) {
+
+        $("myBookingsBox").innerHTML =
+          `
+            <div class="empty">
+              暂时没有查询到预约记录。
+            </div>
+          `;
+
+        return;
+
+      }
+
+
+      const rows =
+        data.map(item => {
+
+          const created =
+            new Date(
+              item.created_at
+            );
+
+
+          /*
+           * 创建时间 + 30分钟
+           */
+
+          const expire =
+            new Date(
+              created.getTime() +
+              30 * 60 * 1000
+            );
+
+
+          const remain =
+            expire - new Date();
+
+
+          let action;
+
+
+          /*
+           * 还可以取消
+           */
+
+          if (remain > 0) {
+
+            action = `
+
+              <button
+                class="cancel-btn"
+                onclick="cancelMyBooking(${item.id})"
+              >
+                取消预约
+              </button>
+
+              <div
+                class="small-note countdown"
+                data-expire="${expire.toISOString()}"
+                style="margin-top:4px;"
+              >
+                计算中...
+              </div>
+
+            `;
+
+          }
+
+
+          /*
+           * 超过30分钟
+           */
+
+          else {
+
+            action = `
+
+              <button
+                class="cancel-btn"
+                disabled
+              >
+                已超过30分钟
+              </button>
+
+            `;
+
+          }
+
+
+          return `
+
+            <tr>
+
+              <td>
+                ${escapeHtml(
+                  item.booking_date
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.room
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.time_slot
+                )}
+              </td>
+
+              <td>
+                ${created.toLocaleString(
+                  "zh-CN"
+                )}
+              </td>
+
+              <td>
+                ${action}
+              </td>
+
+            </tr>
+
+          `;
+
+        }).join("");
+
+
+      $("myBookingsBox").innerHTML = `
+
+        <div class="table-wrap">
+
+          <table class="my-booking-table">
+
+            <thead>
+
+              <tr>
+
+                <th>
+                  日期
+                </th>
+
+                <th>
+                  房间
+                </th>
+
+                <th>
+                  时间段
+                </th>
+
+                <th>
+                  预约时间
+                </th>
+
+                <th>
+                  操作
+                </th>
+
+              </tr>
+
+            </thead>
+
+            <tbody>
+              ${rows}
+            </tbody>
+
+          </table>
+
+        </div>
+
+      `;
+
+
+      updateCountdowns();
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 30分钟倒计时
+     * ==========================================================
+     */
+
+    function updateCountdowns() {
+
+      document
+        .querySelectorAll(".countdown")
+        .forEach(el => {
+
+
+          const expire =
+            new Date(
+              el.dataset.expire
+            );
+
+
+          const remain =
+            expire - new Date();
+
+
+          /*
+           * 时间到了
+           */
+
+          if (remain <= 0) {
+
+            el.textContent =
+              "已超过30分钟";
+
+
+            const btn =
+              el.parentElement
+                .querySelector(
+                  ".cancel-btn"
+                );
+
+
+            if (btn) {
+
+              btn.disabled =
+                true;
+
+              btn.textContent =
+                "已超过30分钟";
+
+            }
+
+            return;
+
+          }
+
+
+          const totalSeconds =
+            Math.floor(
+              remain / 1000
+            );
+
+
+          const minutes =
+            Math.floor(
+              totalSeconds / 60
+            );
+
+
+          const seconds =
+            totalSeconds % 60;
+
+
+          el.textContent =
+            `剩余可取消时间：${minutes}分${String(seconds).padStart(2, "0")}秒`;
+
+        });
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 用户取消自己的预约
+     * ==========================================================
+     */
+
+    window.cancelMyBooking =
+      async function(id) {
+
+        if (!currentLookupPhone) {
+          return;
+        }
+
+
+        if (
+          !confirm(
+            "确定要取消这笔预约吗？"
+          )
+        ) {
+          return;
+        }
+
+
+        const {
+          data,
+          error
+        } = await db.rpc(
+          "cancel_booking",
+          {
+            p_booking_id: id,
+            p_phone:
+              currentLookupPhone
+          }
+        );
+
+
+        if (error) {
+
+          console.error(error);
+
+          alert(
+            "取消失败：" +
+            (
+              error.message ||
+              "未知错误"
+            )
+          );
+
+          return;
+
+        }
+
+
+        /*
+         * 数据库返回 false
+         */
+
+        if (!data) {
+
+          alert(
+            "取消失败：可能已经超过30分钟、手机号不匹配，或者这笔预约已经被取消。"
+          );
+
+
+          await queryMyBookings(true);
+
+          return;
+
+        }
+
+
+        /*
+         * 成功
+         */
+
+        alert(
+          "预约已成功取消，该时段已经重新开放预约。"
+        );
+
+
+        await queryMyBookings(true);
+
+        await loadAvailability(false);
+
+      };
+
+
+    /*
+     * ==========================================================
+     * 管理员登录
+     * ==========================================================
+     */
+
+    async function adminLogin() {
+
+      const email =
+        $("adminEmail")
+          .value
+          .trim();
+
+
+      const password =
+        $("adminPassword")
+          .value;
+
+
+      if (!email || !password) {
+
+        showMessage(
+
+          $("adminMessage"),
+
+          "请输入管理员邮箱和密码。",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      $("adminLoginBtn")
+        .disabled = true;
+
+
+      $("adminLoginBtn")
+        .textContent =
+        "登录中...";
+
+
+      /*
+       * Supabase Auth 登录
+       */
+
+      const {
+        error
+      } = await db.auth
+        .signInWithPassword({
+
+          email,
+
+          password
+
+        });
+
+
+      if (error) {
+
+        console.error(error);
+
+
+        showMessage(
+
+          $("adminMessage"),
+
+          "登录失败：" +
+          (
+            error.message ||
+            "请检查邮箱和密码"
+          ),
+
+          "error"
+
+        );
+
+
+        $("adminLoginBtn")
+          .disabled = false;
+
+
+        $("adminLoginBtn")
+          .textContent =
+          "管理员登录";
+
+
+        return;
+
+      }
+
+
+      $("adminLoginBtn")
+        .disabled = false;
+
+
+      $("adminLoginBtn")
+        .textContent =
+        "管理员登录";
+
+
+      hideMessage(
+        $("adminMessage")
+      );
+
+
+      await showAdminPanel();
+
+    }
+
+
+    /*
+     * 显示管理员后台
+     */
+
+    async function showAdminPanel() {
+
+      $("adminLoginPanel")
+        .style.display =
+        "none";
+
+
+      $("adminPanel")
+        .style.display =
+        "block";
+
+
+      await loadAdminBookings();
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 管理员读取所有预约
+     * ==========================================================
+     */
+
+    async function loadAdminBookings() {
+
+      let query =
+        db
+          .from("bookings")
+          .select("*")
+          .order(
+            "booking_date",
+            {
+              ascending: true
+            }
+          )
+          .order(
+            "time_slot",
+            {
+              ascending: true
+            }
+          )
+          .order(
+            "room",
+            {
+              ascending: true
+            }
+          );
+
+
+      /*
+       * 日期筛选
+       */
+
+      const date =
+        $("adminDateFilter")
+          .value;
+
+
+      /*
+       * 房间筛选
+       */
+
+      const room =
+        $("adminRoomFilter")
+          .value;
+
+
+      if (date) {
+
+        query =
+          query.eq(
+            "booking_date",
+            date
+          );
+
+      }
+
+
+      if (room) {
+
+        query =
+          query.eq(
+            "room",
+            room
+          );
+
+      }
+
+
+      const {
+        data,
+        error
+      } = await query;
+
+
+      if (error) {
+
+        console.error(error);
+
+
+        showMessage(
+
+          $("adminDataMessage"),
+
+          "读取管理员数据失败。请确认当前登录账号就是你在 SQL 中设置的管理员邮箱。",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      adminBookings =
+        data || [];
+
+
+      renderAdminTable();
+
+
+      hideMessage(
+        $("adminDataMessage")
+      );
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 管理员表格
+     * ==========================================================
+     */
+
+    function renderAdminTable() {
+
+      const body =
+        $("adminTableBody");
+
+
+      if (!adminBookings.length) {
+
+        body.innerHTML = `
+
+          <tr>
+
+            <td
+              colspan="7"
+              style="
+                text-align:center;
+                color:#6b7280;
+              "
+            >
+              暂无预约记录
+            </td>
+
+          </tr>
+
+        `;
+
+        return;
+
+      }
+
+
+      body.innerHTML =
+        adminBookings
+          .map(item => `
+
+            <tr>
+
+              <td>
+                ${escapeHtml(
+                  item.booking_date
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.room
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.time_slot
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.name
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.phone
+                )}
+              </td>
+
+              <td>
+                ${new Date(
+                  item.created_at
+                ).toLocaleString(
+                  "zh-CN"
+                )}
+              </td>
+
+              <td>
+
+                <button
+                  class="cancel-btn"
+                  onclick="adminDeleteBooking(${item.id})"
+                >
+                  取消
+                </button>
+
+              </td>
+
+            </tr>
+
+          `)
+          .join("");
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 管理员取消预约
+     * ==========================================================
+     */
+
+    window.adminDeleteBooking =
+      async function(id) {
+
+        if (
+          !confirm(
+            "确定要取消这笔预约吗？取消后该时段会重新开放。"
+          )
+        ) {
+
+          return;
+
+        }
+
+
+        const {
+          error
+        } = await db
+          .from("bookings")
+          .delete()
+          .eq("id", id);
+
+
+        if (error) {
+
+          console.error(error);
+
+
+          alert(
+            "取消失败：" +
+            (
+              error.message ||
+              "未知错误"
+            )
+          );
+
+
+          return;
+
+        }
+
+
+        alert(
+          "预约已取消。"
+        );
+
+
+        await loadAdminBookings();
+
+        await loadAvailability(false);
+
+      };
+
+
+    /*
+     * ==========================================================
+     * 管理员退出
+     * ==========================================================
+     */
+
+    async function adminLogout() {
+
+      await db.auth.signOut();
+
+
+      $("adminPanel")
+        .style.display =
+        "none";
+
+
+      $("adminLoginPanel")
+        .style.display =
+        "block";
+
+
+      $("adminPassword")
+        .value = "";
+
+
+      hideMessage(
+        $("adminMessage")
+      );
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 导出 Excel
+     * ==========================================================
+     */
+
+    function exportExcel() {
+
+      if (!adminBookings.length) {
+
+        alert(
+          "当前没有可导出的预约记录。"
+        );
+
+        return;
+
+      }
+
+
+      if (!window.XLSX) {
+
+        alert(
+          "Excel 导出组件加载失败，请检查网络连接。"
+        );
+
+        return;
+
+      }
+
+
+      /*
+       * 整理导出数据
+       */
+
+      const exportRows =
+        adminBookings.map(item => ({
+
+          "预约日期":
+            item.booking_date,
+
+          "房间":
+            item.room,
+
+          "时间段":
+            item.time_slot,
+
+          "姓名":
+            item.name,
+
+          "手机号":
+            item.phone,
+
+          "预约时间":
+            new Date(
+              item.created_at
+            ).toLocaleString(
+              "zh-CN"
+            )
+
+        }));
+
+
+      /*
+       * 创建工作表
+       */
+
+      const worksheet =
+        XLSX.utils.json_to_sheet(
+          exportRows
+        );
+
+
+      /*
+       * 创建 Excel 文件
+       */
+
+      const workbook =
+        XLSX.utils.book_new();
+
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        "预约记录"
+      );
+
+
+      /*
+       * 文件名
+       */
+
+      const date =
+        localToday();
+
+
+      XLSX.writeFile(
+        workbook,
+        `天工书院面试室预约-${date}.xlsx`
+      );
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 恢复管理员登录状态
+     * ==========================================================
+     */
+
+    async function restoreAdminSession() {
+
+      const {
+        data
+      } = await db.auth.getSession();
+
+
+      if (
+        data &&
+        data.session
+      ) {
+
+        await showAdminPanel();
+
+      }
+
+    }
+
+
+    /*
+     * ==========================================================
+     * 页面初始化
+     * ==========================================================
+     */
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      async () => {
+
+
+        /*
+         * 今天
+         */
+
+        const today =
+          localToday();
+
+
+        /*
+         * 设置默认日期
+         */
+
+        $("bookingDate")
+          .value =
+          today;
+
+
+        /*
+         * 不允许选择过去日期
+         */
+
+        $("bookingDate")
+          .min =
+          today;
+
+
+        /*
+         * 日期改变
+         */
+
+        $("bookingDate")
+          .addEventListener(
+            "change",
+            async () => {
+
+              selected.clear();
+
+              await loadAvailability(false);
+
+            }
+          );
+
+
+        /*
+         * 刷新预约状态
+         */
+
+        $("refreshBtn")
+          .addEventListener(
+            "click",
+            async () => {
+
+              await loadAvailability(
+                true
+              );
+
+            }
+          );
+
+
+        /*
+         * 确认预约
+         */
+
+        $("confirmBtn")
+          .addEventListener(
+            "click",
+            openBookingModal
+          );
+
+
+        /*
+         * 清空选择
+         */
+
+        $("clearBtn")
+          .addEventListener(
+            "click",
+            () => {
+
+              selected.clear();
+
+              renderGrid();
+
+            }
+          );
+
+
+        /*
+         * 关闭预约窗口
+         */
+
+        $("closeModalBtn")
+          .addEventListener(
+            "click",
+            closeBookingModal
+          );
+
+
+        /*
+         * 提交预约
+         */
+
+        $("submitBookingBtn")
+          .addEventListener(
+            "click",
+            submitBooking
+          );
+
+
+        /*
+         * 查询自己的预约
+         */
+
+        $("queryBtn")
+          .addEventListener(
+            "click",
+            () =>
+              queryMyBookings(false)
+          );
+
+
+        /*
+         * 手机号按回车也可以查询
+         */
+
+        $("queryPhone")
+          .addEventListener(
+            "keydown",
+            e => {
+
+              if (
+                e.key === "Enter"
+              ) {
+
+                queryMyBookings(false);
+
+              }
+
+            }
+          );
+
+
+        /*
+         * 管理员登录
+         */
+
+        $("adminLoginBtn")
+          .addEventListener(
+            "click",
+            adminLogin
+          );
+
+
+        /*
+         * 管理员密码按回车登录
+         */
+
+        $("adminPassword")
+          .addEventListener(
+            "keydown",
+            e => {
+
+              if (
+                e.key === "Enter"
+              ) {
+
+                adminLogin();
+
+              }
+
+            }
+          );
+
+
+        /*
+         * 管理员刷新
+         */
+
+        $("adminRefreshBtn")
+          .addEventListener(
+            "click",
+            loadAdminBookings
+          );
+
+
+        /*
+         * 管理员日期筛选
+         */
+
+        $("adminDateFilter")
+          .addEventListener(
+            "change",
+            loadAdminBookings
+          );
+
+
+        /*
+         * 管理员房间筛选
+         */
+
+        $("adminRoomFilter")
+          .addEventListener(
+            "change",
+            loadAdminBookings
+          );
+
+
+        /*
+         * 清除管理员筛选
+         */
+
+        $("clearAdminFilterBtn")
+          .addEventListener(
+            "click",
+            async () => {
+
+              $("adminDateFilter")
+                .value = "";
+
+
+              $("adminRoomFilter")
+                .value = "";
+
+
+              await loadAdminBookings();
+
+            }
+          );
+
+
+        /*
+         * 导出 Excel
+         */
+
+        $("exportBtn")
+          .addEventListener(
+            "click",
+            exportExcel
+          );
+
+
+        /*
+         * 管理员退出
+         */
+
+        $("adminLogoutBtn")
+          .addEventListener(
+            "click",
+            adminLogout
+          );
+
+
+        /*
+         * 点击弹窗外部关闭
+         */
+
+        $("bookingModal")
+          .addEventListener(
+            "click",
+            e => {
+
+              if (
+                e.target ===
+                $("bookingModal")
+              ) {
+
+                closeBookingModal();
+
+              }
+
+            }
+          );
+
+
+        /*
+         * 第一次绘制预约表
+         */
+
+        renderGrid();
+
+
+        /*
+         * 如果没有填写 Publishable key
+         */
+
+        if (
+          !SUPABASE_PUBLISHABLE_KEY ||
+          SUPABASE_PUBLISHABLE_KEY ===
+          "PASTE_YOUR_PUBLISHABLE_KEY_HERE"
+        ) {
+
+          showMessage(
+
+            $("availabilityMessage"),
+
+            "请先在代码顶部填写 Supabase Publishable key，然后刷新网页。",
+
+            "info"
+
+          );
+
+        }
+
+
+        /*
+         * 已经填写 key
+         */
+
+        else {
+
+          await loadAvailability(
+            false
+          );
+
+
+          await restoreAdminSession();
+
+        }
+
+
+        /*
+         * 每秒更新30分钟倒计时
+         */
+
+        countdownTimer =
+          setInterval(
+            updateCountdowns,
+            1000
+          );
+
+      }
+    );
+
+  </script>
+
+</body>
+</html>
