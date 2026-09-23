@@ -448,6 +448,8 @@
     }
 
     .modal {
+      max-height: 90vh;
+      overflow-y: auto;
       width: min(520px, 100%);
       background: white;
       border-radius: 16px;
@@ -851,10 +853,6 @@
               全部房间
             </option>
 
-            <option value="B515">
-              B515
-            </option>
-
             <option value="B516">
               B516
             </option>
@@ -918,6 +916,8 @@
                 <th>
                   预约时间
                 </th>
+
+                <th>凭证</th>
 
                 <th>
                   操作
@@ -1012,6 +1012,11 @@
         </div>
 
 
+        <div class="form-group full">
+          <label for="bookingProof">面试/考试凭证截图（必填）</label>
+          <input id="bookingProof" type="file" accept="image/jpeg,image/png,image/webp" required>
+          <div class="small-note">支持 JPG、PNG、WebP，最大 5 MB。本次所选时段共用一份凭证，仅管理员可查看。</div>
+        </div>
       </div>
 
 
@@ -1092,7 +1097,6 @@
      */
 
     const rooms = [
-      "B515",
       "B516",
       "B517",
       "B518",
@@ -1154,6 +1158,10 @@
     let adminBookings = [];
 
     let countdownTimer = null;
+    let submitting = false;
+    let pendingProof = null;
+    const PROOF_BUCKET = "booking-proofs";
+
 
 
     /*
@@ -1183,24 +1191,10 @@
      */
 
     function localToday() {
-
-      const d = new Date();
-
-      const offset =
-        d.getTimezoneOffset();
-
-      const local =
-        new Date(
-          d.getTime() -
-          offset * 60000
-        );
-
-      return local
-        .toISOString()
-        .slice(0, 10);
-
+      const parts = new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(new Date());
+      const value = type => parts.find(p => p.type === type).value;
+      return `${value("year")}-${value("month")}-${value("day")}`;
     }
-
 
     /*
      * 防止管理员数据中的特殊字符破坏页面
@@ -1277,41 +1271,8 @@
      */
 
     function slotIsPast(slot) {
-
-      const date =
-        $("bookingDate").value;
-
-      if (date !== localToday()) {
-        return false;
-      }
-
-
-      const start =
-        slot.split("-")[0];
-
-
-      const [h, m] =
-        start
-          .split(":")
-          .map(Number);
-
-
-      const now =
-        new Date();
-
-
-      const currentMinutes =
-        now.getHours() * 60 +
-        now.getMinutes();
-
-
-      return (
-        h * 60 + m <=
-        currentMinutes
-      );
-
+      return new Date($("bookingDate").value + "T" + slot.split("-")[0] + ":00+08:00").getTime() <= Date.now();
     }
-
 
     /*
      * ==========================================================
@@ -1648,7 +1609,7 @@
         data,
         error
       } = await db.rpc(
-        "get_booked_slots",
+        "booking_v2_slots",
         {
           p_date: date
         }
@@ -1736,6 +1697,8 @@
      */
 
     function openBookingModal() {
+      $("bookingProof").value = "";
+      pendingProof = null;
 
       if (selected.size === 0) {
         return;
@@ -1775,6 +1738,7 @@
      */
 
     function closeBookingModal() {
+      if (submitting) return;
 
       $("bookingModal")
         .classList
@@ -1790,366 +1754,76 @@
      */
 
     async function submitBooking() {
-
-      const name =
-        $("userName")
-          .value
-          .trim();
-
-
-      const phone =
-        $("userPhone")
-          .value
-          .trim();
-
-
-      const date =
-        $("bookingDate").value;
-
-
-      /*
-       * 姓名
-       */
-
-      if (!name) {
-
-        showMessage(
-          $("modalMessage"),
-          "请输入姓名。",
-          "error"
-        );
-
-        return;
-
-      }
-
-
-      /*
-       * 手机号
-       */
-
-      if (!validPhone(phone)) {
-
-        showMessage(
-          $("modalMessage"),
-
-          "手机号格式不正确，请输入11位中国大陆手机号码。",
-
-          "error"
-        );
-
-        return;
-
-      }
-
-
-      /*
-       * 没有选择
-       */
-
-      if (selected.size === 0) {
-
-        showMessage(
-          $("modalMessage"),
-          "没有可提交的预约时段。",
-          "error"
-        );
-
-        return;
-
-      }
-
-
-      $("submitBookingBtn").disabled =
-        true;
-
-
-      $("submitBookingBtn").textContent =
-        "正在提交...";
-
-
+      if (submitting) return;
+      const name = $("userName").value.trim();
+      const phone = $("userPhone").value.trim();
+      const date = $("bookingDate").value;
+      const file = $("bookingProof").files[0];
+      const types = {"image/jpeg":"jpg", "image/png":"png", "image/webp":"webp"};
+      const fail = text => showMessage($("modalMessage"), text, "error");
+      if (!name || name.length > 30) return fail("请输入不超过30字的姓名。");
+      if (!validPhone(phone)) return fail("请输入正确的11位中国大陆手机号。");
+      if (!selected.size) return fail("请先选择预约时段。");
+      if (!file) return fail("请上传面试/考试凭证截图。");
+      if (!types[file.type] || file.size === 0 || file.size > 5 * 1024 * 1024)
+        return fail("请选择非空的 JPG、PNG 或 WebP 图片，且不超过5 MB。");
+      const choices = Array.from(selected).map(k => {
+        const [room, time_slot] = k.split("|");
+        return {room, time_slot};
+      });
+      submitting = true;
+      $("submitBookingBtn").disabled = true;
+      $("closeModalBtn").disabled = true;
+      let saved = false;
       try {
-
-        /*
-         * ======================================================
-         * 最终提交前，再次查询数据库
-         *
-         * 防止：
-         *
-         * A用户正在填写姓名
-         *
-         * B用户先一步预约
-         *
-         * A用户最后提交时仍然显示绿色
-         *
-         * 这里再次检查。
-         * ======================================================
-         */
-
-        const {
-          data: latest,
-          error: latestError
-        } = await db.rpc(
-          "get_booked_slots",
-          {
-            p_date: date
-          }
-        );
-
-
-        if (latestError) {
-          throw latestError;
+        // Decode the image before upload; server also restricts MIME and size.
+        const imageURL = URL.createObjectURL(file);
+        try {
+          await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = resolve;
+            img.onerror = () => reject(new Error("截图无法读取，请重新选择有效图片。"));
+            img.src = imageURL;
+          });
+        } finally { URL.revokeObjectURL(imageURL); }
+        $("submitBookingBtn").textContent = "正在上传凭证...";
+        if (!pendingProof || pendingProof.file !== file) {
+          const path = "proofs/" + crypto.randomUUID() + "." + types[file.type];
+          const {error} = await db.storage.from(PROOF_BUCKET).upload(path, file, {
+            contentType: file.type, upsert: false, cacheControl: "60"
+          });
+          if (error) throw error;
+          pendingProof = {file, path};
         }
-
-
-        const latestBooked =
-          new Set(
-            (latest || []).map(row =>
-              key(
-                row.room,
-                row.time_slot
-              )
-            )
-          );
-
-
-        /*
-         * 找出冲突时间
-         */
-
-        const conflicts =
-          Array.from(selected)
-            .filter(k =>
-              latestBooked.has(k)
-            );
-
-
-        /*
-         * 有人抢先了
-         */
-
-        if (conflicts.length > 0) {
-
-          conflicts.forEach(k =>
-            selected.delete(k)
-          );
-
-
-          booked =
-            latestBooked;
-
-
-          renderGrid();
-
-
-          showMessage(
-            $("modalMessage"),
-
-            "其中有时段刚刚被其他人预约了，请重新选择后再提交。",
-
-            "error"
-          );
-
-
-          return;
-
-        }
-
-
-        /*
-         * 组织数据库数据
-         */
-
-        const rows =
-          Array.from(selected)
-            .map(k => {
-
-              const [
-                room,
-                time_slot
-              ] = k.split("|");
-
-
-              return {
-
-                name,
-
-                phone,
-
-                room,
-
-                booking_date:
-                  date,
-
-                time_slot
-
-              };
-
-            });
-
-
-        /*
-         * 一次性批量写入数据库
-         */
-
-        const {
-          error
-        } = await db
-          .from("bookings")
-          .insert(rows);
-
-
-        /*
-         * 数据库报错
-         */
-
-        if (error) {
-
-          console.error(error);
-
-
-          /*
-           * 23505 = 唯一约束冲突
-           */
-
-          if (
-            error.code === "23505"
-          ) {
-
-            showMessage(
-              $("modalMessage"),
-
-              "提交失败：有时段已被其他人抢先预约，请刷新后重新选择。",
-
-              "error"
-            );
-
-          }
-
-          else {
-
-            showMessage(
-              $("modalMessage"),
-
-              "预约失败：" +
-              (
-                error.message ||
-                "未知错误"
-              ),
-
-              "error"
-            );
-
-          }
-
-
-          await loadAvailability(false);
-
-          return;
-
-        }
-
-
-        /*
-         * 保存手机号
-         * 方便马上查询自己的预约
-         */
-
-        currentLookupPhone =
-          phone;
-
-
-        /*
-         * 清空选择
-         */
-
+        $("submitBookingBtn").textContent = "正在提交预约...";
+        const {error} = await db.rpc("booking_v2_create", {
+          p_name: name, p_phone: phone, p_date: date,
+          p_slots: choices, p_proof_path: pendingProof.path
+        });
+        if (error) throw error;
+        saved = true;
+        currentLookupPhone = phone;
+        $("queryPhone").value = phone;
         selected.clear();
-
-
-        /*
-         * 关闭窗口
-         */
-
-        closeBookingModal();
-
-
-        /*
-         * 刷新预约表
-         */
-
+        pendingProof = null;
+        $("bookingProof").value = "";
+        $("bookingModal").classList.remove("show");
+        showMessage($("bookingMessage"), `预约成功！共预约 ${choices.length} 个时段。创建后30分钟内可取消。`, "success");
         await loadAvailability(false);
-
-
-        /*
-         * 成功提示
-         */
-
-        showMessage(
-
-          $("bookingMessage"),
-
-          `预约成功！共预约 ${rows.length} 个时段。
-          请记住手机号，可在30分钟内查询并取消自己的预约。`,
-
-          "success"
-
-        );
-
-
-        setTimeout(() => {
-
-          hideMessage(
-            $("bookingMessage")
-          );
-
-        }, 8000);
-
-
-        /*
-         * 自动查询刚刚的预约
-         */
-
         await queryMyBookings(true);
-
-
-      }
-
-      catch (err) {
-
+      } catch (err) {
         console.error(err);
-
-
-        showMessage(
-
-          $("modalMessage"),
-
-          "预约失败，请检查网络或 Supabase 配置。",
-
-          "error"
-
-        );
-
+        const detail = err.code === "23505" ? "有时段已被预约，请返回并刷新后重新选择。" : (err.message || "请检查网络连接。");
+        if (saved) showMessage($("bookingMessage"), "预约已成功，列表刷新失败，请手动刷新或按手机号查询。", "info");
+        else fail("提交未完成：" + detail + " 若网络中断，请先按手机号查询，确认是否已成功。");
+        // Never delete a proof after an uncertain network result: the transaction may have committed.
+      } finally {
+        submitting = false;
+        $("submitBookingBtn").disabled = false;
+        $("closeModalBtn").disabled = false;
+        $("submitBookingBtn").textContent = "提交预约";
       }
-
-      finally {
-
-        $("submitBookingBtn")
-          .disabled = false;
-
-
-        $("submitBookingBtn")
-          .textContent = "提交预约";
-
-      }
-
     }
-
-
-    /*
-     * ==========================================================
-     * 查询自己的预约
-     * ==========================================================
-     */
 
     async function queryMyBookings(
       silent = false
@@ -2196,7 +1870,7 @@
         data,
         error
       } = await db.rpc(
-        "get_my_bookings",
+        "booking_v2_mine",
         {
           p_phone: phone
         }
@@ -2286,7 +1960,7 @@
 
               <button
                 class="cancel-btn"
-                onclick="cancelMyBooking(${item.id})"
+                onclick="cancelMyBooking('${escapeHtml(item.id)}')"
               >
                 取消预约
               </button>
@@ -2519,7 +2193,7 @@
           data,
           error
         } = await db.rpc(
-          "cancel_booking",
+          "booking_v2_cancel",
           {
             p_booking_id: id,
             p_phone:
@@ -2698,6 +2372,14 @@
      */
 
     async function showAdminPanel() {
+      const {data: allowed, error} = await db.rpc("booking_v2_is_admin");
+      if (error || !allowed) {
+        $("adminPanel").style.display = "none";
+        $("adminLoginPanel").style.display = "block";
+        showMessage($("adminMessage"), "此账号未获管理员授权，请确认 SQL 中填写的是该账号邮箱。", "error");
+        return;
+      }
+
 
       $("adminLoginPanel")
         .style.display =
@@ -2845,7 +2527,7 @@
           <tr>
 
             <td
-              colspan="7"
+              colspan="8"
               style="
                 text-align:center;
                 color:#6b7280;
@@ -2907,11 +2589,15 @@
                 )}
               </td>
 
+              <td>${item.proof_path
+                ? `<button class="btn btn-secondary" data-proof-id="${escapeHtml(item.id)}">查看凭证</button>`
+                : '历史记录：无凭证'}</td>
+
               <td>
 
                 <button
                   class="cancel-btn"
-                  onclick="adminDeleteBooking(${item.id})"
+                  onclick="adminDeleteBooking('${escapeHtml(item.id)}')"
                 >
                   取消
                 </button>
@@ -2931,6 +2617,33 @@
      * 管理员取消预约
      * ==========================================================
      */
+
+    document.getElementById("adminTableBody").addEventListener("click", async event => {
+      const button = event.target.closest("[data-proof-id]");
+      if (!button) return;
+      const booking = adminBookings.find(item => String(item.id) === button.dataset.proofId);
+      if (!booking || !booking.proof_path) return;
+      const tab = window.open("about:blank", "_blank");
+      if (tab) { tab.opener = null; tab.document.body.textContent = "正在获取凭证…"; }
+      button.disabled = true;
+      try {
+        const {data, error} = await db.storage.from(PROOF_BUCKET).createSignedUrl(booking.proof_path, 60);
+        if (error) throw error;
+        if (!data || !data.signedUrl) throw new Error("未能生成查看链接。");
+        if (tab) tab.location.replace(data.signedUrl);
+        else {
+          const box = $("adminDataMessage");
+          showMessage(box, "浏览器拦截了新窗口，请在60秒内点击：", "info");
+          const link = document.createElement("a");
+          link.href = data.signedUrl; link.target = "_blank"; link.rel = "noopener noreferrer";
+          link.textContent = "打开凭证"; box.appendChild(link);
+          setTimeout(() => link.remove(), 60000);
+        }
+      } catch (error) {
+        if (tab) tab.close();
+        showMessage($("adminDataMessage"), "查看凭证失败：" + error.message, "error");
+      } finally { button.disabled = false; }
+    });
 
     window.adminDeleteBooking =
       async function(id) {
@@ -2992,6 +2705,9 @@
      */
 
     async function adminLogout() {
+      adminBookings = [];
+      renderAdminTable();
+      hideMessage($("adminDataMessage"));
 
       await db.auth.signOut();
 
@@ -3068,6 +2784,8 @@
 
           "手机号":
             item.phone,
+
+          "凭证": item.proof_path ? "已上传（请在管理后台查看）" : "历史记录：无凭证",
 
           "预约时间":
             new Date(
